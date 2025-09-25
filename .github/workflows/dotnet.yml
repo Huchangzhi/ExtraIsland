@@ -39,7 +39,7 @@ jobs:
       shell: pwsh  # PowerShell
     
     - name: Build
-      run: dotnet build --no-restore -c Release --runtime win-x64 -p:EnableWindowsTargeting=true
+      run: dotnet build --no-restore -c Release -p:EnableWindowsTargeting=true
       shell: pwsh  # PowerShell
     
     - name: Test
