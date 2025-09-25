@@ -1,4 +1,4 @@
-name: Build and Test .NET 6 Windows
+name: Build and Test Windows
 
 on:
   push:
@@ -22,17 +22,22 @@ on:
     # 允许手动触发工作流
 
 jobs:
-  build:
+  build-net8:
     runs-on: windows-latest  # Windows runner
+    name: Build .NET 8 (Current)
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Setup .NET 6
+    - name: Setup .NET 8
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '6.0.x'
+        dotnet-version: '8.0.x'
+    
+    - name: Display .NET info
+      run: dotnet --info
+      shell: pwsh
     
     - name: Restore dependencies
       run: dotnet restore
@@ -43,9 +48,77 @@ jobs:
       shell: pwsh  # PowerShell
     
     - name: Test
-      run: dotnet test --no-build -c Release --runtime win-x64 --logger "trx" --results-directory "TestResults"
+      run: dotnet test --no-build -c Release --logger "trx" --results-directory "TestResults"
       shell: pwsh  # PowerShell
       continue-on-error: true
+    
+    - name: Publish
+      run: dotnet publish -c Release --runtime win-x64 --output ./publish_net8 -p:EnableWindowsTargeting=true
+      shell: pwsh  # PowerShell
+    
+    - name: Upload .NET 8 artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: net8-application
+        path: publish_net8/
+  
+  build-net6:
+    runs-on: windows-latest
+    name: Build .NET 6 (Migration)
+    needs: build-net8  # 确保 .NET 8 构建成功后再尝试 .NET 6
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET 6
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '6.0.x'
+    
+    - name: Display .NET info
+      run: dotnet --info
+      shell: pwsh
+    
+    - name: Restore dependencies
+      run: dotnet restore
+      shell: pwsh
+    
+    - name: Create .NET 6 compatible project file
+      run: |
+        # 读取原始项目文件
+        $projectContent = Get-Content "ExtraIsland/ExtraIsland.csproj" -Raw
+        
+        # 替换目标框架为 .NET 6
+        $net6ProjectContent = $projectContent -replace '<TargetFramework>net8.0-windows</TargetFramework>', '<TargetFramework>net6.0-windows</TargetFramework>'
+        
+        # 移除 .NET 8 特有的元素，如 Nullable 和 ImplicitUsings
+        $net6ProjectContent = $net6ProjectContent -replace '<Nullable>enable</Nullable>', ''
+        $net6ProjectContent = $net6ProjectContent -replace '<ImplicitUsings>enable</ImplicitUsings>', ''
+        
+        # 保存为新文件
+        $net6ProjectContent | Out-File -FilePath "ExtraIsland/ExtraIsland_net6.csproj" -Encoding UTF8
+        Write-Host "Created .NET 6 project file"
+        Write-Host "Content preview:"
+        $net6ProjectContent | Out-String | Write-Host
+      shell: pwsh
+    
+    - name: Build .NET 6 version
+      run: dotnet build ExtraIsland/ExtraIsland_net6.csproj --no-restore -c Release -p:EnableWindowsTargeting=true
+      shell: pwsh
+      continue-on-error: true
+    
+    - name: Publish .NET 6 version
+      run: dotnet publish ExtraIsland/ExtraIsland_net6.csproj -c Release --runtime win-x64 --output ./publish_net6 -p:EnableWindowsTargeting=true
+      shell: pwsh
+      continue-on-error: true
+    
+    - name: Upload .NET 6 artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: net6-application
+        path: publish_net6/
+      if: always()
     
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -54,8 +127,14 @@ jobs:
         name: test-results
         path: TestResults/
     
-    - name: Publish artifacts
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: built-application
-        path: ExtraIsland/bin/Release/**
+        name: build-output
+        path: ExtraIsland/bin/Release/**/*
+    
+    - name: Upload publish artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: published-application
+        path: publish/
