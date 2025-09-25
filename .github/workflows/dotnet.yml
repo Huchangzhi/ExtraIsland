@@ -1,0 +1,59 @@
+name: Build and Test .NET 6 Windows
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '**/*.txt'
+      - '**/*.git*'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '**/*.txt'
+
+jobs:
+  build:
+    runs-on: windows-latest  # Windows runner
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET 6
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '6.0.x'
+    
+    - name: Restore dependencies
+      run: dotnet restore
+      shell: pwsh  # PowerShell
+    
+    - name: Build
+      run: dotnet build --no-restore -c Release --runtime win-x64 -p:EnableWindowsTargeting=true
+      shell: pwsh  # PowerShell
+    
+    - name: Test
+      run: dotnet test --no-build -c Release --runtime win-x64 --logger "trx" --results-directory "TestResults"
+      shell: pwsh  # PowerShell
+      continue-on-error: true
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: TestResults/
+    
+    - name: Publish artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: built-application
+        path: ExtraIsland/bin/Release/**
